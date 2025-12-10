@@ -1,0 +1,45 @@
+name: pytest
+
+on:
+  workflow_call:
+    # Allow other repositories to reuse this workflow.
+    inputs:
+      python-version:
+        description: Python version to install with uv.
+        type: string
+        required: false
+      pytest-args:
+        description: Extra arguments to pass to pytest.
+        type: string
+        required: false
+        default: ''
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out the repository that invoked this workflow.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Install the requested Python version via uv when the caller specifies one.
+      - name: Set up uv (with explicit Python version)
+        if: ${{ inputs.python-version != '' }}
+        uses: astral-sh/setup-uv@v2
+        with:
+          python-version: ${{ inputs.python-version }}
+
+      # Install uv with its default Python version when the caller omits the input.
+      - name: Set up uv (use action default Python version)
+        if: ${{ inputs.python-version == '' }}
+        uses: astral-sh/setup-uv@v2
+
+      # Install dependencies, enforcing the lock file; caller must provide pyproject.toml and uv.lock.
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # Execute the test suite with optional extra pytest arguments supplied by the caller.
+      - name: Run tests
+        run: |
+          uv run pytest --log-level=DEBUG ${{ inputs.pytest-args }}

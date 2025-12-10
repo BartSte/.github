@@ -1,0 +1,45 @@
+# Bytecode and interpreter cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments and tooling caches
+.venv/
+venv/
+env/
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging/build artifacts
+build/
+dist/
+*.egg-info/
+pip-wheel-metadata/
+pip-wheel.log
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+
+# Logs
+*.log
+
+# Local environment configuration
+.env
+.env.*
+*.local
+
+# IDE/editor metadata
+.idea/
+.vscode/
+
+# Type checker and formatter artifacts
+.dmypy.json
+.pyre/
+.pytype/
+
+# Aider tooling logs
+.aider*
