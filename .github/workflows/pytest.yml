@@ -2,12 +2,15 @@ name: pytest
 
 on:
   workflow_call:
-    # Allow other repositories to reuse this workflow.
     inputs:
-      python-version:
-        description: Python version to install with uv.
+      python-versions:
+        description: >-
+          JSON array of Python versions to test against, e.g. '["3.11", "3.12"]'.
+          When omitted, versions are resolved automatically from requires-python
+          in the caller's pyproject.toml. An empty array is not valid.
         type: string
         required: false
+        default: ''
       pytest-args:
         description: Extra arguments to pass to pytest.
         type: string
@@ -15,25 +18,90 @@ on:
         default: ''
 
 jobs:
-  test:
+  setup:
     runs-on: ubuntu-latest
+    outputs:
+      python-versions: ${{ steps.resolve.outputs.python-versions }}
+
+    steps:
+      # Check out the caller's repository so pyproject.toml is accessible.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Needed for specifier parsing in the auto-detection path.
+      - name: Install packaging
+        run: pip install --quiet --disable-pip-version-check packaging
+
+      # If the caller provided an explicit list, pass it straight through.
+      # Otherwise, fetch active CPython releases from endoflife.date, then
+      # filter against requires-python from the caller's pyproject.toml.
+      - name: Resolve Python versions
+        id: resolve
+        run: |
+          if [ -n "${{ inputs.python-versions }}" ]; then
+            echo "python-versions=${{ inputs.python-versions }}" >> "$GITHUB_OUTPUT"
+          else
+            VERSIONS=$(python3 -c "
+          import json, sys, tomllib, urllib.request
+          from datetime import date
+          from pathlib import Path
+          from packaging.specifiers import SpecifierSet
+          from packaging.version import Version
+
+          # Fetch active CPython minor versions from endoflife.date.
+          today = date.today().isoformat()
+          with urllib.request.urlopen('https://endoflife.date/api/python.json') as resp:
+              eol_data = json.load(resp)
+
+          KNOWN = sorted(
+              [e['cycle'] for e in eol_data
+               if e['cycle'].startswith('3.')
+               and (e['eol'] is False or e['eol'] > today)],
+              key=lambda v: tuple(int(x) for x in v.split('.')),
+          )
+
+          path = Path('pyproject.toml')
+          if not path.exists():
+              print(json.dumps(KNOWN))
+              sys.exit(0)
+
+          with open(path, 'rb') as f:
+              data = tomllib.load(f)
+
+          specifier_str = data.get('project', {}).get('requires-python', '')
+          if not specifier_str:
+              print(json.dumps(KNOWN))
+              sys.exit(0)
+
+          sp = SpecifierSet(specifier_str)
+          matched = [v for v in KNOWN if Version(v) in sp]
+          if not matched:
+              print('WARNING: no known version satisfies: ' + specifier_str, file=sys.stderr)
+              print(json.dumps([KNOWN[-1]]))
+              sys.exit(0)
+
+          print(json.dumps(matched))
+          ")
+            echo "python-versions=$VERSIONS" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(needs.setup.outputs.python-versions) }}
 
     steps:
       # Check out the repository that invoked this workflow.
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Install the requested Python version via uv when the caller specifies one.
-      - name: Set up uv (with explicit Python version)
-        if: ${{ inputs.python-version != '' }}
+      # Install uv and pin Python to the current matrix version.
+      - name: Set up uv
         uses: astral-sh/setup-uv@v2
         with:
-          python-version: ${{ inputs.python-version }}
-
-      # Install uv with its default Python version when the caller omits the input.
-      - name: Set up uv (use action default Python version)
-        if: ${{ inputs.python-version == '' }}
-        uses: astral-sh/setup-uv@v2
+          python-version: ${{ matrix.python-version }}
 
       # Install dependencies, enforcing the lock file; caller must provide pyproject.toml and uv.lock.
       - name: Install dependencies

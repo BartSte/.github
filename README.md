@@ -27,11 +27,16 @@ jobs:
       pytest-args: "" # optional extra pytest flags
 ```
 
+By default, the workflow reads `requires-python` from your `pyproject.toml` and runs tests against every compatible Python version (from the set 3.9–3.13). To override this, pass a JSON array:
+
+```yaml
+    with:
+      python-versions: '["3.12", "3.13"]'
+```
+
 ## Workflow Steps at a Glance
 
 ### pytest.yml
-- Checkout the calling repository.
-- Set up `uv`, optionally with a caller-specified Python version.
-- Synchronize dependencies with `uv sync --frozen`.
-- Run `pytest` with debug logging (and any extra arguments provided).
 
+- **setup job**: Resolves the Python versions to test. Auto-detects compatible versions from `requires-python` in `pyproject.toml`, or uses the caller-supplied `python-versions` JSON array.
+- **test job (matrix)**: For each resolved Python version — checkout, set up `uv` with that version, synchronize dependencies with `uv sync --frozen`, and run `pytest` with debug logging (and any extra arguments provided).
